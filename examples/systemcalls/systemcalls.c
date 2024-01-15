@@ -16,8 +16,33 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int status = 0; 	
+    if (cmd == NULL)
+    {
+	status = system(cmd);
+        if (status == 0)
+		return false;	
 
-    return true;
+    	return true;
+    }
+
+    status = system(cmd);
+    /* If a process could not be created or status could not be received */
+    if (status == -1)
+    {	    
+    	return false;
+    }	
+    else if (WIFEXITED(status))
+    {
+	if (WEXITSTATUS(status) == 0)
+	    return true;
+        else
+	    return false;
+    }	
+    else 
+    {
+	return false;
+    }	
 }
 
 /**
@@ -47,7 +72,7 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 /*
  * TODO:
@@ -58,10 +83,37 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+    int status;
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+    	va_end(args);
+	return false;
+    }
 
-    va_end(args);
-
-    return true;
+    /* Child process */
+    if (pid == 0)
+    {
+    	status = execv(command[0], command);
+	if (status == -1)
+		_exit(EXIT_FAILURE);
+    }
+    else
+    {
+	if (waitpid(pid, &status, 0) == -1)
+	{
+		va_end(args);
+	        return false;
+	}
+	
+	if ((!WIFEXITED(status)) || (WEXITSTATUS(status) != 0))
+	{
+		va_end(args);
+		return false;
+	}
+    }	
+	va_end(args);
+        return true;
 }
 
 /**
@@ -82,7 +134,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 
 /*
@@ -92,8 +144,57 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int status;
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0)
+    {
+        va_end(args);
+	return false;
+    }
 
+    pid_t pid = fork();
+    
+    if (pid < 0)
+    {
+	close(fd);    
+    	va_end(args);
+	return false;
+    }
+
+    if (pid == 0)
+    {
+	if (dup2(fd, STDOUT_FILENO) < 0)
+	{
+	    close(fd);
+	    va_end(args);
+	    _exit(EXIT_FAILURE);
+        }
+        close(fd);
+	
+	if (execv(command[0], command) == -1)
+	{
+	    va_end(args);
+	    _exit(EXIT_FAILURE);
+	}
+    }
+    else 
+    {
+	close(fd);
+
+	if (waitpid(pid, &status, 0) == -1) 
+	{
+	    va_end(args);
+            return false;
+	}
+
+	if ((!WIFEXITED(status)) || (WEXITSTATUS(status) != 0))
+	{
+	    va_end(args);
+	    return false;
+	}
+    }
+   
     va_end(args);
-
     return true;
+    
 }
